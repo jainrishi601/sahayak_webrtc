@@ -1,9 +1,9 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const { v4: uuidv4 } = require('uuid');
 const screenshot = require('screenshot-desktop');
+const ioClient = require('socket.io-client');
 
-let socket = require('socket.io-client')('https://sahayk-server.onrender.com');
-
+let socket;
 let interval;
 
 function createWindow() {
@@ -11,7 +11,8 @@ function createWindow() {
         width: 500,
         height: 150,
         webPreferences: {
-            nodeIntegration: true
+            nodeIntegration: true,
+            contextIsolation: false  // Consider setting to true for better security
         }
     });
 
@@ -33,23 +34,44 @@ app.on('activate', () => {
     }
 });
 
-ipcMain.on('start-share', function(event, arg) {
-    let uuid = uuidv4();
-    socket.emit('join-message', uuid);
-    event.reply('uuid', uuid);
+ipcMain.on('start-share', async (event) => {
+    try {
+        // Generate a unique room ID
+        const uuid = uuidv4();
 
-    interval = setInterval(function() {
-        screenshot().then((img) => {
-            let imgStr = Buffer.from(img).toString('base64');
-            let obj = {
-                room: uuid,
-                image: imgStr
-            };
-            socket.emit('screen-data', JSON.stringify(obj));
-        });
-    }, 100);
+        // Establish socket connection and join room
+        socket = ioClient.connect('https://sahayk-server.onrender.com');
+        socket.emit('join-message', uuid);
+
+        // Send room code back to client for display
+        event.reply('uuid', uuid);
+
+        // Start screen capture and emit screen data at intervals
+        interval = setInterval(async () => {
+            try {
+                const img = await screenshot();
+                const imgStr = Buffer.from(img).toString('base64');
+                const obj = { room: uuid, image: imgStr };
+                socket.emit('screen-data', JSON.stringify(obj));
+            } catch (error) {
+                console.error("Screenshot or socket error:", error);
+                event.reply('error-message', 'Error capturing or sending screen data');
+            }
+        }, 100);  // Adjusted interval for performance
+
+    } catch (error) {
+        console.error("Error starting screen sharing:", error);
+        event.reply('error-message', 'Error initiating screen sharing');
+    }
 });
 
-ipcMain.on('stop-share', function(event, arg) {
+ipcMain.on('stop-share', (event) => {
+    // Stop screen sharing interval and disconnect socket
     clearInterval(interval);
+    if (socket) {
+        socket.disconnect();
+    }
+    console.log("Screen sharing stopped");
+    event.reply('uuid', 'Screen sharing stopped');
 });
+
