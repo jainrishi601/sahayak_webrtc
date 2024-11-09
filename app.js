@@ -2,7 +2,8 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const { v4: uuidv4 } = require('uuid');
 const screenshot = require('screenshot-desktop');
 
-let socket = require('socket.io-client')('http://localhost:5000');
+let socket = require('socket.io-client')('https://sahayk-server.onrender.com');
+
 let interval;
 
 function createWindow() {
